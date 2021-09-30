@@ -39,6 +39,40 @@ Busybox Curl
 
      kubectl run busybox-curl --image=yauritux/busybox-curl --restart=Never --command -- sleep 3600
 
+Custom Script to restart Strimzi containers
+
+```
+        
+# Get the list of connectors for New relic and loop through each of them to find the failed connectors.
+ 
+for connector in $(kubectl get kafkaconnector| awk '{print $1}')
+do
+ 
+# Finding the failed conncetors
+state=$(kubectl get kafkaconnector $connector -ojson | jq -r .status.connectorStatus.tasks | jq  '.[0]' | jq -r .state)
+echo $state
+ 
+# Lets restart the failed connectors from command line by fetching the pod ip and executing the restart commands
+ 
+if [[ $state == "FAILED" ]]; then
+ 
+echo "I got a failure"
+ 
+ip=$(kubectl get kafkaconnector $connector -ojson | jq -r .status.connectorStatus.tasks | jq  '.[0]'| jq -r .worker_id | awk -F ":" '{print $1}')
+pod_name=$(kubectl get pods -owide | grep -i $ip | awk '{print $1}')
+kubectl exec -it $pod_name -- curl http://localhost:8083/connectors/$connector/status
+kubectl exec -it $pod_name -- curl -X POST http://localhost:8083/connectors/$connector/tasks/0/restart
+ 
+# Lets give it sometime to recover from restart and then check the status.
+sleep 3
+kubectl exec -it $pod_name -- curl http://localhost:8083/connectors/$connector/status
+ 
+fi
+ 
+ 
+done
+
+```
 
 
     
